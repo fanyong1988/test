@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单片机原理可视化</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            width: 1200px;
+            height: 600px;
+        }
+        .side-panel {
+            width: 200px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .microcontroller {
+            width: 800px;
+            height: 600px;
+            background-color: #ddd;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+        .component {
+            position: absolute;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #333;
+            border-radius: 5px;
+            width: 250px;
+        }
+        #cpu { top: 20px; left: 20px; }
+        #memory { top: 20px; right: 20px; }
+        #io { bottom: 20px; left: 20px; }
+        #timer { bottom: 20px; right: 20px; }
+        button {
+            margin-top: 10px;
+            padding: 5px 10px;
+        }
+        #cpu-output, #memory-output, #io-output, #timer-output {
+            margin-top: 10px;
+            font-size: 12px;
+            height: 100px;
+            overflow-y: auto;
+        }
+        .led {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .led-off { background-color: #ccc; }
+        .led-on { background-color: #f00; }
+        #data-bus {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            border: 2px dashed #333;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="side-panel" id="memory-changes">
+            <h3>内存改动</h3>
+        </div>
+        <div class="microcontroller">
+            <div id="cpu" class="component">
+                CPU
+                <button onclick="runCPU()">执行指令</button>
+                <div id="cpu-output"></div>
+            </div>
+            <div id="memory" class="component">
+                内存
+                <button onclick="writeMemory()">写入数据</button>
+                <button onclick="readMemory()">读取数据</button>
+                <div id="memory-output"></div>
+            </div>
+            <div id="io" class="component">
+                I/O接口
+                <div>
+                    <span class="led led-off" id="led1"></span>
+                    <span class="led led-off" id="led2"></span>
+                    <span class="led led-off" id="led3"></span>
+                </div>
+                <button onclick="toggleIO()">切换LED</button>
+                <div id="io-output"></div>
+            </div>
+            <div id="timer" class="component">
+                定时器
+                <button onclick="startTimer()">启动/停止</button>
+                <div id="timer-output"></div>
+            </div>
+            <div id="data-bus">数据总线</div>
+        </div>
+        <div class="side-panel" id="data-bus-log">
+            <h3>数据总线日志</h3>
+        </div>
+    </div>
+
+    <script>
+        let cpuInstructions = ['MOV A, #5', 'ADD A, #3', 'MOV B, A', 'SUB B, #2', 'OUT P1, A', 'IN A, P2'];
+        let cpuInstructionIndex = 0;
+        let memory = new Array(8).fill(0);
+        let ioStatus = [false, false, false];
+        let timerInterval;
+        let timerValue = 10;
+
+        function log(component, message) {
+            const output = document.getElementById(`${component}-output`);
+            output.innerHTML += `${message}<br>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function showDataTransfer(from, to, data) {
+            const dataBusLog = document.getElementById('data-bus-log');
+            dataBusLog.innerHTML += `${from} → ${to}: ${data}<br>`;
+            dataBusLog.scrollTop = dataBusLog.scrollHeight;
+
+            const dataBus = document.getElementById('data-bus');
+            dataBus.innerHTML = `${from} → ${to}<br>${data}`;
+            setTimeout(() => {
+                dataBus.innerHTML = '数据总线';
+            }, 1000);
+        }
+
+        function logMemoryChange(address, oldValue, newValue) {
+            const memoryChanges = document.getElementById('memory-changes');
+            memoryChanges.innerHTML += `地址 ${address}: ${oldValue} → ${newValue}<br>`;
+            memoryChanges.scrollTop = memoryChanges.scrollHeight;
+        }
+
+        function runCPU() {
+            let instruction = cpuInstructions[cpuInstructionIndex];
+            log('cpu', `执行指令: ${instruction}`);
+            
+            if (instruction.startsWith('MOV') || instruction.startsWith('ADD') || instruction.startsWith('SUB')) {
+                let address = Math.floor(Math.random() * 8);
+                let oldValue = memory[address];
+                let newValue = Math.floor(Math.random() * 256);
+                memory[address] = newValue;
+                showDataTransfer('CPU', '内存', `地址${address}: ${newValue}`);
+                logMemoryChange(address, oldValue, newValue);
+                updateMemoryOutput();
+            } else if (instruction.startsWith('OUT')) {
+                let ledIndex = Math.floor(Math.random() * 3);
+                ioStatus[ledIndex] = !ioStatus[ledIndex];
+                showDataTransfer('CPU', 'I/O', `LED${ledIndex + 1}: ${ioStatus[ledIndex] ? '开' : '关'}`);
+                updateIOOutput();
+            } else if (instruction.startsWith('IN')) {
+                let ledIndex = Math.floor(Math.random() * 3);
+                showDataTransfer('I/O', 'CPU', `LED${ledIndex + 1}: ${ioStatus[ledIndex] ? '开' : '关'}`);
+            }
+
+            cpuInstructionIndex = (cpuInstructionIndex + 1) % cpuInstructions.length;
+        }
+
+        function writeMemory() {
+            let address = Math.floor(Math.random() * 8);
+            let oldValue = memory[address];
+            let newValue = Math.floor(Math.random() * 256);
+            memory[address] = newValue;
+            showDataTransfer('CPU', '内存', `地址${address}: ${newValue}`);
+            logMemoryChange(address, oldValue, newValue);
+            updateMemoryOutput();
+        }
+
+        function readMemory() {
+            let address = Math.floor(Math.random() * 8);
+            let value = memory[address];
+            showDataTransfer('内存', 'CPU', `地址${address}: ${value}`);
+            log('memory', `读取地址 ${address}: 值 = ${value}`);
+        }
+
+        function updateMemoryOutput() {
+            let output = '内存内容:<br>';
+            for (let i = 0; i < memory.length; i++) {
+                output += `地址 ${i}: ${memory[i]}<br>`;
+            }
+            document.getElementById('memory-output').innerHTML = output;
+        }
+
+        function toggleIO() {
+            let ledIndex = Math.floor(Math.random() * 3);
+            ioStatus[ledIndex] = !ioStatus[ledIndex];
+            showDataTransfer('CPU', 'I/O', `LED${ledIndex + 1}: ${ioStatus[ledIndex] ? '开' : '关'}`);
+            updateIOOutput();
+        }
+
+        function updateIOOutput() {
+            for (let i = 0; i < 3; i++) {
+                let led = document.getElementById(`led${i+1}`);
+                if (ioStatus[i]) {
+                    led.className = 'led led-on';
+                } else {
+                    led.className = 'led led-off';
+                }
+            }
+            document.getElementById('io-output').innerHTML = `LED状态: ${ioStatus.map(s => s ? '开' : '关').join(', ')}`;
+        }
+
+        function startTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                log('timer', '定时器已停止');
+            } else {
+                timerValue = 10;
+                timerInterval = setInterval(() => {
+                    timerValue--;
+                    log('timer', `倒计时: ${timerValue}秒`);
+                    if (timerValue <= 0) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        log('timer', '定时器已结束');
+                        showDataTransfer('定时器', 'CPU', '中断信号');
+                    }
+                }, 1000);
+            }
+        }
+
+        updateMemoryOutput();
+        updateIOOutput();
+    </script>
+</body>
+</html>
